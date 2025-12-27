@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import type { Consultation, TranscriptEntry, AIEvent } from "@/lib/db"
 import { TranscriptPanel } from "./transcript-panel"
 import { InsightsPanel } from "./insights-panel"
@@ -89,31 +89,14 @@ export function LiveConsultation({ consultation, initialTranscripts, initialAIEv
   const lastAICallRef = useRef(0)
   const aiThrottleMs = 5000 // 5 seconds between AI calls
 
-  // Simulate initial loading
-  useState(() => {
-    setTimeout(() => setIsLoading(false), 300)
-  })
-
-  // Callback when we receive final transcript
-  const handleFinalTranscript = useCallback((entry: TranscriptEntry) => {
-    setTranscripts((prev) => [...prev, entry])
-    setInterimTranscript("")
-
-    // Accumulate text for AI processing
-    accumulatedTextRef.current += " " + entry.content
-
-    // Throttle AI calls
-    const now = Date.now()
-    if (now - lastAICallRef.current > aiThrottleMs && accumulatedTextRef.current.trim().length > 50) {
-      lastAICallRef.current = now
-      // Trigger AI analysis
-      processWithAI(accumulatedTextRef.current.trim(), entry.consultation_id)
-      accumulatedTextRef.current = ""
-    }
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 300)
+    return () => clearTimeout(timer)
   }, [])
 
-  // Process transcript with AI
   const processWithAI = useCallback(async (text: string, consultationId: string) => {
+    console.log("[v0] Starting AI processing with text length:", text.length)
+
     try {
       const response = await fetch("/api/ai/analyze", {
         method: "POST",
@@ -124,6 +107,8 @@ export function LiveConsultation({ consultation, initialTranscripts, initialAIEv
         }),
       })
 
+      console.log("[v0] AI response status:", response.status)
+
       if (!response.ok) {
         const errorText = await response.text()
         console.error("[v0] AI analyze failed:", response.status, errorText)
@@ -131,25 +116,57 @@ export function LiveConsultation({ consultation, initialTranscripts, initialAIEv
       }
 
       const data = await response.json()
+      console.log("[v0] AI response data:", JSON.stringify(data, null, 2))
 
-      // Add new AI events to state (with deduplication)
-      if (data.events && Array.isArray(data.events)) {
+      // Add new AI events to state
+      if (data.events && Array.isArray(data.events) && data.events.length > 0) {
+        console.log("[v0] Adding", data.events.length, "new AI events")
+
         setAIEvents((prev) => {
-          const newEvents = data.events.filter(
-            (newEvent: AIEvent) =>
-              !prev.some(
-                (existing) =>
-                  existing.event_type === newEvent.event_type &&
-                  JSON.stringify(existing.content) === JSON.stringify(newEvent.content),
-              ),
-          )
-          return [...newEvents, ...prev]
+          // Simply prepend new events - the InsightsPanel handles deduplication
+          const newEvents = [...data.events, ...prev]
+          console.log("[v0] Total AI events after update:", newEvents.length)
+          return newEvents
         })
+      } else {
+        console.log("[v0] No events in response or empty array")
       }
     } catch (error) {
       console.error("[v0] Error processing with AI:", error)
     }
   }, [])
+
+  // Callback when we receive final transcript
+  const handleFinalTranscript = useCallback(
+    (entry: TranscriptEntry) => {
+      setTranscripts((prev) => [...prev, entry])
+      setInterimTranscript("")
+
+      // Accumulate text for AI processing
+      accumulatedTextRef.current += " " + entry.content
+
+      // Throttle AI calls
+      const now = Date.now()
+      const timeSinceLastCall = now - lastAICallRef.current
+      const textLength = accumulatedTextRef.current.trim().length
+
+      console.log(
+        "[v0] Final transcript received, accumulated length:",
+        textLength,
+        "time since last AI call:",
+        timeSinceLastCall,
+      )
+
+      if (timeSinceLastCall > aiThrottleMs && textLength > 50) {
+        lastAICallRef.current = now
+        const textToProcess = accumulatedTextRef.current.trim()
+        accumulatedTextRef.current = ""
+        console.log("[v0] Triggering AI analysis...")
+        processWithAI(textToProcess, entry.consultation_id)
+      }
+    },
+    [processWithAI],
+  )
 
   // Callback when we receive interim transcript
   const handleInterimTranscript = useCallback((text: string) => {

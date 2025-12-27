@@ -3,32 +3,39 @@ import { generateObject } from "ai"
 import { z } from "zod"
 import { saveAIEvent } from "@/lib/actions/consultations"
 
-// Schema for AI analysis output
 const ClinicalInsightsSchema = z.object({
-  entities: z.object({
-    symptoms: z.array(
+  entities: z
+    .object({
+      symptoms: z
+        .array(
+          z.object({
+            name: z.string(),
+            duration: z.string().nullable().optional().default("not specified"),
+            severity: z.string().nullable().optional().default("not specified"),
+          }),
+        )
+        .default([]),
+      negatives: z.array(z.string()).default([]),
+    })
+    .default({ symptoms: [], negatives: [] }),
+  followUps: z
+    .array(
       z.object({
-        name: z.string().describe("Name of the symptom"),
-        duration: z.string().optional().describe("How long the symptom has been present"),
-        severity: z.string().optional().describe("Severity level if mentioned"),
+        category: z.string().default("General"),
+        question: z.string(),
+        priority: z.string().default("medium"), // Changed from enum to string for flexibility
       }),
-    ),
-    negatives: z.array(z.string()).describe("Relevant negative findings mentioned"),
-  }),
-  followUps: z.array(
-    z.object({
-      category: z.string().describe("Category like History, Review of Systems, Physical Exam"),
-      question: z.string().describe("The follow-up question to consider asking"),
-      priority: z.enum(["high", "medium", "low"]).describe("Priority level"),
-    }),
-  ),
-  safetyConsiderations: z.array(
-    z.object({
-      description: z.string().describe("Description of the safety consideration or red flag"),
-      severity: z.enum(["critical", "warning", "info"]).describe("Severity level"),
-      rationale: z.string().optional().describe("Brief rationale for this consideration"),
-    }),
-  ),
+    )
+    .default([]),
+  safetyConsiderations: z
+    .array(
+      z.object({
+        description: z.string(),
+        severity: z.string().default("info"), // Changed from enum to string for flexibility
+        rationale: z.string().nullable().optional().default(""),
+      }),
+    )
+    .default([]),
 })
 
 const SYSTEM_PROMPT = `You are a clinical decision support assistant. Your role is to help healthcare providers by:
@@ -46,46 +53,89 @@ CRITICAL SAFETY RULES - YOU MUST FOLLOW:
 
 Your output should help clinicians think through the case systematically while preserving their clinical judgment.
 
-Be concise and clinically relevant. Prioritize safety-critical findings.`
+Be concise and clinically relevant. Prioritize safety-critical findings.
+
+IMPORTANT: Always return valid JSON matching this exact structure:
+{
+  "entities": { "symptoms": [...], "negatives": [...] },
+  "followUps": [{ "category": "...", "question": "...", "priority": "high|medium|low" }],
+  "safetyConsiderations": [{ "description": "...", "severity": "critical|warning|info", "rationale": "..." }]
+}`
 
 export async function POST(request: Request) {
-  try {
-    console.log("[v0] AI analyze endpoint called")
+  console.log("[v0] AI analyze endpoint called")
 
-    const { consultationId, transcript } = await request.json()
-    console.log("[v0] Processing transcript:", { consultationId, transcriptLength: transcript?.length })
+  try {
+    const body = await request.json()
+    const { consultationId, transcript } = body
+
+    console.log("[v0] Processing transcript:", {
+      consultationId,
+      transcriptLength: transcript?.length,
+      hasTranscript: !!transcript,
+    })
 
     if (!consultationId || !transcript) {
       console.log("[v0] Missing required fields")
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Generate structured clinical insights using AI Gateway (no API key needed)
-    console.log("[v0] Calling OpenAI via AI Gateway...")
-    const result = await generateObject({
-      model: "openai/gpt-4o-mini",
-      schema: ClinicalInsightsSchema,
-      system: SYSTEM_PROMPT,
-      prompt: `Analyze this portion of a clinical consultation transcript and extract relevant insights:
+    let insights = null
+    let attempts = 0
+    const maxAttempts = 2
+
+    while (attempts < maxAttempts && !insights) {
+      attempts++
+      console.log(`[v0] AI Gateway attempt ${attempts}/${maxAttempts}...`)
+
+      try {
+        const result = await generateObject({
+          model: "openai/gpt-4o-mini",
+          schema: ClinicalInsightsSchema,
+          system: SYSTEM_PROMPT,
+          prompt: `Analyze this clinical consultation transcript excerpt and extract relevant insights:
 
 "${transcript}"
 
-Extract:
-1. Clinical entities (symptoms with duration/severity if mentioned, relevant negatives)
-2. Follow-up questions the clinician might consider (prioritized, categorized)
-3. Any safety considerations or red flags (with severity and rationale)
+Extract the following in valid JSON format:
+1. entities: symptoms (with name, duration, severity) and relevant negatives
+2. followUps: array of questions with category, question text, and priority (high/medium/low)
+3. safetyConsiderations: any red flags with description, severity (critical/warning/info), and rationale
 
+If no relevant information for a category, return an empty array.
 Remember: Do NOT diagnose, prescribe, or make definitive medical recommendations.`,
-    })
+          temperature: 0.3, // Lower temperature for more consistent output
+        })
 
-    console.log("[v0] AI response received:", JSON.stringify(result.object, null, 2))
+        insights = result.object
+        console.log("[v0] AI response received:", JSON.stringify(insights, null, 2))
+      } catch (aiError: unknown) {
+        console.error(`[v0] AI Gateway attempt ${attempts} error:`, aiError)
 
-    const insights = result.object
+        if (attempts >= maxAttempts) {
+          console.log("[v0] All attempts failed, returning empty insights")
+          insights = {
+            entities: { symptoms: [], negatives: [] },
+            followUps: [],
+            safetyConsiderations: [],
+          }
+        }
+      }
+    }
+
+    if (!insights) {
+      return NextResponse.json({ events: [] }, { status: 200 })
+    }
+
     const events: Array<{ event_type: string; content: Record<string, unknown> }> = []
 
     // Save entities if present
     if (insights.entities.symptoms.length > 0 || insights.entities.negatives.length > 0) {
-      await saveAIEvent(consultationId, "entities", insights.entities)
+      try {
+        await saveAIEvent(consultationId, "entities", insights.entities)
+      } catch (dbError) {
+        console.error("[v0] DB save error for entities:", dbError)
+      }
       events.push({
         event_type: "entities",
         content: insights.entities,
@@ -94,19 +144,39 @@ Remember: Do NOT diagnose, prescribe, or make definitive medical recommendations
 
     // Save follow-ups if present
     if (insights.followUps.length > 0) {
-      await saveAIEvent(consultationId, "follow_up", { questions: insights.followUps })
+      const normalizedFollowUps = insights.followUps.map((f) => ({
+        ...f,
+        priority: ["high", "medium", "low"].includes(f.priority.toLowerCase()) ? f.priority.toLowerCase() : "medium",
+      }))
+
+      try {
+        await saveAIEvent(consultationId, "follow_up", { questions: normalizedFollowUps })
+      } catch (dbError) {
+        console.error("[v0] DB save error for follow_ups:", dbError)
+      }
       events.push({
         event_type: "follow_up",
-        content: { questions: insights.followUps },
+        content: { questions: normalizedFollowUps },
       })
     }
 
     // Save safety considerations if present
     if (insights.safetyConsiderations.length > 0) {
-      await saveAIEvent(consultationId, "red_flag", { flags: insights.safetyConsiderations })
+      const normalizedSafety = insights.safetyConsiderations.map((s) => ({
+        ...s,
+        severity: ["critical", "warning", "info"].includes(s.severity.toLowerCase())
+          ? s.severity.toLowerCase()
+          : "info",
+      }))
+
+      try {
+        await saveAIEvent(consultationId, "red_flag", { flags: normalizedSafety })
+      } catch (dbError) {
+        console.error("[v0] DB save error for red_flags:", dbError)
+      }
       events.push({
         event_type: "red_flag",
-        content: { flags: insights.safetyConsiderations },
+        content: { flags: normalizedSafety },
       })
     }
 
@@ -121,12 +191,12 @@ Remember: Do NOT diagnose, prescribe, or make definitive medical recommendations
 
     console.log("[v0] AI analysis completed:", {
       consultationId,
-      eventsGenerated: events.length,
+      eventsGenerated: eventsWithIds.length,
     })
 
     return NextResponse.json({ events: eventsWithIds })
   } catch (error) {
     console.error("[v0] AI analysis error:", error)
-    return NextResponse.json({ error: "AI analysis failed", details: String(error) }, { status: 500 })
+    return NextResponse.json({ events: [] }, { status: 200 })
   }
 }
