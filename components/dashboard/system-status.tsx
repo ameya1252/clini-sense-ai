@@ -11,7 +11,7 @@ const systems = [
 
 export function SystemStatus() {
   return (
-    <div className="glass-panel-solid rounded-2xl p-5 gradient-border flex flex-col h-full">
+    <div className="glass-panel-solid rounded-2xl p-5 gradient-border flex flex-col h-full flex-1">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
@@ -32,7 +32,7 @@ export function SystemStatus() {
         </div>
       </div>
 
-      {/* Systems List */}
+      {/* Systems List - flex-1 to take remaining space */}
       <div className="space-y-2 flex-1">
         {systems.map((system, index) => (
           <div
@@ -54,7 +54,7 @@ export function SystemStatus() {
         ))}
       </div>
 
-      {/* Performance Bar */}
+      {/* Performance Bar - at the bottom */}
       <div className="mt-4 pt-4 border-t border-border/30">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium">System Performance</span>

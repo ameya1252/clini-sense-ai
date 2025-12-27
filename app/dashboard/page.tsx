@@ -56,17 +56,18 @@ export default async function DashboardPage() {
               <StatsGrid stats={stats} />
             </div>
 
-            {/* Main Grid - 2 columns */}
             <div className="grid lg:grid-cols-12 gap-5 mt-5">
               {/* Left Column - Start Consultation + Consultations List */}
-              <div className="lg:col-span-7 space-y-5">
+              <div className="lg:col-span-7 flex flex-col gap-5">
                 <StartConsultationCard userId={MOCK_USER_ID} />
                 <ConsultationsList consultations={consultations} />
               </div>
 
-              <div className="lg:col-span-5 space-y-5">
+              <div className="lg:col-span-5 flex flex-col gap-5">
                 <StandaloneLabCard userId={MOCK_USER_ID} />
-                <SystemStatus />
+                <div className="flex-1 flex flex-col">
+                  <SystemStatus />
+                </div>
               </div>
             </div>
           </div>

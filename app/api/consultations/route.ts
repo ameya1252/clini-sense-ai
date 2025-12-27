@@ -3,7 +3,7 @@ import { sql } from "@/lib/db"
 
 export async function POST(request: Request) {
   try {
-    const { userId, patientId, type } = await request.json()
+    const { userId, type } = await request.json()
 
     if (!userId) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 })
@@ -15,8 +15,8 @@ export async function POST(request: Request) {
     const consultationType = type || "full"
 
     await sql`
-      INSERT INTO consultations (id, user_id, patient_id, status, started_at, created_at, updated_at)
-      VALUES (${consultationId}, ${userId}, ${patientId || null}, ${consultationType === "lab_only" ? "completed" : "active"}, ${now}, ${now}, ${now})
+      INSERT INTO consultations (id, user_id, status, started_at, created_at, updated_at)
+      VALUES (${consultationId}, ${userId}, ${consultationType === "lab_only" ? "completed" : "active"}, ${now}, ${now}, ${now})
     `
 
     return NextResponse.json({ id: consultationId, type: consultationType })
