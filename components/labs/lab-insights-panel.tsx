@@ -42,10 +42,95 @@ const INSIGHT_CONFIG = {
   },
 }
 
+function extractItems(content: unknown): Array<{ text: string; detail?: string }> {
+  if (!content) return []
+
+  // If content is null or undefined
+  if (content === null || content === undefined) return []
+
+  // If content has items array directly
+  if (typeof content === "object" && "items" in content && Array.isArray((content as { items: unknown[] }).items)) {
+    return (content as { items: unknown[] }).items.map((item) => {
+      if (typeof item === "string") {
+        return { text: item }
+      }
+      if (typeof item === "object" && item !== null) {
+        const itemObj = item as Record<string, unknown>
+        return {
+          text: String(itemObj.text || itemObj.name || itemObj.finding || JSON.stringify(item)),
+          detail: itemObj.detail ? String(itemObj.detail) : undefined,
+        }
+      }
+      return { text: String(item) }
+    })
+  }
+
+  // If content is an array directly
+  if (Array.isArray(content)) {
+    return content.map((item) => {
+      if (typeof item === "string") {
+        return { text: item }
+      }
+      if (typeof item === "object" && item !== null) {
+        const itemObj = item as Record<string, unknown>
+        return {
+          text: String(itemObj.text || itemObj.name || itemObj.finding || JSON.stringify(item)),
+          detail: itemObj.detail ? String(itemObj.detail) : undefined,
+        }
+      }
+      return { text: String(item) }
+    })
+  }
+
+  // If content is an object with category keys (like {BMP: [...], CBC: [...]})
+  if (typeof content === "object") {
+    const items: Array<{ text: string; detail?: string }> = []
+    const contentObj = content as Record<string, unknown>
+
+    for (const key of Object.keys(contentObj)) {
+      const value = contentObj[key]
+      if (Array.isArray(value)) {
+        value.forEach((v) => {
+          if (typeof v === "string") {
+            items.push({ text: `${key}: ${v}` })
+          } else if (typeof v === "object" && v !== null) {
+            const vObj = v as Record<string, unknown>
+            items.push({
+              text: `${key}: ${String(vObj.text || vObj.name || vObj.finding || JSON.stringify(v))}`,
+              detail: vObj.detail ? String(vObj.detail) : undefined,
+            })
+          }
+        })
+      } else if (typeof value === "string") {
+        items.push({ text: `${key}: ${value}` })
+      } else if (typeof value === "object" && value !== null) {
+        const vObj = value as Record<string, unknown>
+        items.push({
+          text: `${key}: ${String(vObj.text || vObj.name || JSON.stringify(value))}`,
+          detail: vObj.detail ? String(vObj.detail) : undefined,
+        })
+      }
+    }
+    return items
+  }
+
+  // Fallback: convert to string
+  if (typeof content === "string") {
+    return [{ text: content }]
+  }
+
+  return []
+}
+
 function InsightCard({ insight }: { insight: LabAIInsight }) {
-  const config = INSIGHT_CONFIG[insight.insight_type]
+  const config = INSIGHT_CONFIG[insight.insight_type] || INSIGHT_CONFIG.abnormal
   const Icon = config.icon
-  const content = insight.content as { items?: Array<{ text: string; detail?: string }> }
+
+  const items = extractItems(insight.content)
+
+  if (items.length === 0) {
+    return null
+  }
 
   return (
     <div className={cn("glass-panel rounded-xl p-4 gradient-border", config.bgColor, config.borderColor)}>
@@ -55,7 +140,7 @@ function InsightCard({ insight }: { insight: LabAIInsight }) {
       </div>
 
       <div className="space-y-2">
-        {content.items?.map((item, idx) => (
+        {items.map((item, idx) => (
           <div key={idx} className="text-sm">
             <p className="text-foreground/90">{item.text}</p>
             {item.detail && <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>}

@@ -69,12 +69,30 @@ export function LabsContent({
   }, [])
 
   const handleChecklistChange = useCallback(
-    (itemKey: string, isChecked: boolean) => {
-      setSafetyChecklist((prev) =>
-        prev.map((item) => (item.item_key === itemKey ? { ...item, is_checked: isChecked } : item)),
-      )
+    (itemKey: string, isChecked: boolean, itemLabel: string) => {
+      setSafetyChecklist((prev) => {
+        const existing = prev.find((item) => item.item_key === itemKey)
+        if (existing) {
+          return prev.map((item) => (item.item_key === itemKey ? { ...item, is_checked: isChecked } : item))
+        } else {
+          // Add new item if it doesn't exist
+          return [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              consultation_id: consultation.id,
+              item_key: itemKey,
+              item_label: itemLabel,
+              is_checked: isChecked,
+              prompt: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ]
+        }
+      })
 
-      // Persist to database
+      // Persist to database with upsert
       fetch("/api/labs/checklist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,6 +100,7 @@ export function LabsContent({
           consultationId: consultation.id,
           itemKey,
           isChecked,
+          itemLabel,
         }),
       }).catch(console.error)
     },

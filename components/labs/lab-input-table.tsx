@@ -3,7 +3,17 @@
 import type React from "react"
 
 import { useState, useCallback, useRef } from "react"
-import { Plus, Trash2, AlertCircle, CheckCircle, AlertTriangle, Upload, Download } from "lucide-react"
+import {
+  Plus,
+  Trash2,
+  AlertCircle,
+  CheckCircle,
+  AlertTriangle,
+  Upload,
+  Download,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -77,13 +87,14 @@ const COMMON_LABS = [
   { name: "PSA", unit: "ng/mL", range: "<4.0" },
 ]
 
+const MAX_VISIBLE_ROWS = 5
+
 function determineFlag(value: string, referenceRange: string | null): LabResult["flag"] {
   if (!referenceRange || !value) return null
 
   const numValue = Number.parseFloat(value)
   if (isNaN(numValue)) return null
 
-  // Parse reference range (e.g., "4.5-11.0" or "<100" or ">10")
   const rangeMatch = referenceRange.match(/^([<>]?)(\d+\.?\d*)-?(\d+\.?\d*)?$/)
   if (!rangeMatch) return null
 
@@ -123,7 +134,11 @@ const FlagIcon = ({ flag }: { flag: LabResult["flag"] }) => {
 export function LabInputTable({ consultationId, labResults, onChange }: LabInputTableProps) {
   const [suggestions, setSuggestions] = useState<typeof COMMON_LABS>([])
   const [activeInputIndex, setActiveInputIndex] = useState<number | null>(null)
+  const [showAllRows, setShowAllRows] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const visibleResults = showAllRows ? labResults : labResults.slice(0, MAX_VISIBLE_ROWS)
+  const hiddenCount = labResults.length - MAX_VISIBLE_ROWS
 
   const addRow = useCallback(() => {
     const newResult: LabResult = {
@@ -139,6 +154,9 @@ export function LabInputTable({ consultationId, labResults, onChange }: LabInput
       updated_at: new Date().toISOString(),
     }
     onChange([...labResults, newResult])
+    if (labResults.length >= MAX_VISIBLE_ROWS) {
+      setShowAllRows(true)
+    }
   }, [consultationId, labResults, onChange])
 
   const removeRow = useCallback(
@@ -266,11 +284,9 @@ export function LabInputTable({ consultationId, labResults, onChange }: LabInput
         const text = e.target?.result as string
         const lines = text.split("\n").filter((line) => line.trim())
 
-        // Skip header row
         const dataLines = lines.slice(1)
 
         const newResults: LabResult[] = dataLines.map((line) => {
-          // Parse CSV properly handling quoted values
           const values: string[] = []
           let current = ""
           let inQuotes = false
@@ -289,7 +305,6 @@ export function LabInputTable({ consultationId, labResults, onChange }: LabInput
 
           const [testName, value, unit, refRange] = values
 
-          // Try to match with common labs for auto-fill
           const match = COMMON_LABS.find((l) => l.name.toLowerCase() === testName?.toLowerCase())
 
           const result: LabResult = {
@@ -311,7 +326,6 @@ export function LabInputTable({ consultationId, labResults, onChange }: LabInput
 
         onChange([...labResults, ...newResults.filter((r) => r.test_name && r.value)])
 
-        // Save all new results
         newResults.forEach((result) => {
           if (result.test_name && result.value) {
             saveRow(result)
@@ -320,7 +334,6 @@ export function LabInputTable({ consultationId, labResults, onChange }: LabInput
       }
 
       reader.readAsText(file)
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
@@ -363,8 +376,7 @@ export function LabInputTable({ consultationId, labResults, onChange }: LabInput
         <div className="col-span-1"></div>
       </div>
 
-      {/* Rows */}
-      {labResults.map((result, index) => (
+      {visibleResults.map((result, index) => (
         <div
           key={result.id}
           className={cn(
@@ -449,6 +461,27 @@ export function LabInputTable({ consultationId, labResults, onChange }: LabInput
           </div>
         </div>
       ))}
+
+      {labResults.length > MAX_VISIBLE_ROWS && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full gap-2 text-muted-foreground hover:text-foreground"
+          onClick={() => setShowAllRows(!showAllRows)}
+        >
+          {showAllRows ? (
+            <>
+              <ChevronUp className="h-4 w-4" />
+              Show less
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-4 w-4" />
+              Show {hiddenCount} more result{hiddenCount > 1 ? "s" : ""}
+            </>
+          )}
+        </Button>
+      )}
 
       {/* Add Row Button */}
       <Button variant="outline" size="sm" className="w-full gap-2 border-dashed bg-transparent" onClick={addRow}>

@@ -96,3 +96,40 @@ export interface LabSafetyChecklistItem {
   created_at: string
   updated_at: string
 }
+
+export interface DischargeInstructions {
+  id: string
+  consultation_id: string
+  visit_summary: string | null
+  symptoms_discussed: string | null
+  watch_for: string | null
+  next_steps: string | null
+  disclaimer: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ClinicianHandoff {
+  id: string
+  consultation_id: string
+  reason_for_visit: string | null
+  key_positive_findings: string | null
+  relevant_negatives: string | null
+  labs_summary: string | null
+  safety_considerations: string | null
+  pending_concerns: string | null
+  followup_needed: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DischargeChecklistItem {
+  id: string
+  consultation_id: string
+  item_key: string
+  item_label: string
+  is_checked: boolean
+  prompt: string | null
+  created_at: string
+  updated_at: string
+}

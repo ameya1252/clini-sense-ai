@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, FlaskConical, FileText } from "lucide-react"
+import { ArrowLeft, FlaskConical, FileText, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Consultation } from "@/lib/db"
 
@@ -19,7 +19,7 @@ export function LabsHeader({ consultation }: LabsHeaderProps) {
   })
 
   return (
-    <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+    <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-8 z-40">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link href={`/consultation/${consultation.id}/summary`}>
@@ -38,12 +38,20 @@ export function LabsHeader({ consultation }: LabsHeaderProps) {
           </div>
         </div>
 
-        <Link href={`/consultation/${consultation.id}/summary`}>
-          <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-            <FileText className="h-4 w-4" />
-            View Summary
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/consultation/${consultation.id}/summary`}>
+            <Button variant="outline" size="sm" className="gap-2 bg-transparent">
+              <FileText className="h-4 w-4" />
+              Summary
+            </Button>
+          </Link>
+          <Link href={`/consultation/${consultation.id}/discharge`}>
+            <Button size="sm" className="gap-2">
+              Discharge & Handoff
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
       </div>
     </header>
   )
