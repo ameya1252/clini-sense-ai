@@ -11,7 +11,7 @@
 
 *Real-time clinical consultation assistant with live transcription, AI insights, and SOAP note generation*
 
-[Live Demo](https://v0-clini-sense-web-app.vercel.app) · [Report Bug](https://github.com/issues) · [Request Feature](https://github.com/issues)
+[Live Demo](https://clinisenseai.com) · [Report Bug](https://github.com/issues) · [Request Feature](https://github.com/issues)
 
 </div>
 
